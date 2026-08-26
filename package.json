@@ -1,0 +1,22 @@
+{
+  "name": "dsh-search-web-perplexity",
+  "version": "0.1.0",
+  "private": true,
+  "type": "module",
+  "description": "Local DSH profile plugin: Perplexity Search API (POST /search, model-agnostic) provider for the web capability seam (ctx.web), plus its web settings card. Host half registers provider id 'dsh-search-web-perplexity' and the 'dsh-search-web-perplexity' settings namespace; browser half registers a card into settings.plugin.item.",
+  "main": "index.js",
+  "exports": {
+    ".": "./index.js",
+    "./client": "./client.js",
+    "./package.json": "./package.json"
+  },
+  "dsh": {
+    "client": {
+      "platform": "web",
+      "inject": [
+        "@deepseek-ai/dsh-client-runtime",
+        "@deepseek-ai/dsh-client-ui-settings-plugins"
+      ]
+    }
+  }
+}
