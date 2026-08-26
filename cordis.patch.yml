@@ -1,0 +1,26 @@
+# dsh-search-web-perplexity — bundle layer (dsh.bundle.patch).
+#
+# The profile launcher applies this file as a bundle layer, in
+# dsh.profile.bundles order, BEFORE the profile's own cordis.patch.yml.
+# It mounts only this plugin's own search-provider entry. Selecting the
+# provider (the `id: web` entry's config.searchProvider) and disabling other
+# providers are deployment choices that belong in the profile's own
+# cordis.patch.yml — a bundle layer must never clobber another plugin's
+# selection, because entry-patch overrides replace whole config keys.
+#
+# Install:  dsh plugin --profile <name> add <this repo's git URL>
+# Uninstall: dsh plugin --profile <name> remove dsh-search-web-perplexity
+#   (plus any provider-selection rows in the profile's cordis.patch.yml)
+#
+# API key: PERPLEXITY_API_KEY from the dsh credentials store (GUI:
+# Settings -> Credentials), the process environment, or a literal
+# config.apiKey override.
+- insert:
+    - id: dsh-search-web-perplexity
+      name: 'dsh-search-web-perplexity'
+      config:
+        apiKeyEnv: PERPLEXITY_API_KEY
+        # maxRetrievedLength (bytes): per-source retrieved-content cap;
+        # over-limit rows are trimmed and the full copy spills to a tmp file
+        # whose path is left in the tool context. Also editable in the GUI.
+        maxRetrievedLength: 4096

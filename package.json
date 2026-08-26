@@ -3,7 +3,7 @@
   "version": "0.1.0",
   "private": true,
   "type": "module",
-  "description": "Local DSH profile plugin: Perplexity Search API (POST /search, model-agnostic) provider for the web capability seam (ctx.web), plus its web settings card. Host half registers provider id 'dsh-search-web-perplexity' and the 'dsh-search-web-perplexity' settings namespace; browser half registers a card into settings.plugin.item.",
+  "description": "DSH profile plugin: Perplexity Search API (POST /search, model-agnostic) provider for the web capability seam (ctx.web), plus its web settings card. Host half registers provider id 'dsh-search-web-perplexity' and the 'dsh-search-web-perplexity' settings namespace; browser half registers a card into settings.plugin.item.",
   "main": "index.js",
   "exports": {
     ".": "./index.js",
@@ -11,6 +11,9 @@
     "./package.json": "./package.json"
   },
   "dsh": {
+    "bundle": {
+      "patch": "./cordis.patch.yml"
+    },
     "client": {
       "platform": "web",
       "inject": [
@@ -18,5 +21,12 @@
         "@deepseek-ai/dsh-client-ui-settings-plugins"
       ]
     }
+  },
+  "peerDependencies": {
+    "@deepseek-ai/dsh-credentials": "*",
+    "@deepseek-ai/dsh-launch-environment": "*",
+    "@deepseek-ai/dsh-settings": "*",
+    "@deepseek-ai/dsh-web": "*",
+    "@deepseek-ai/schemastery": "*"
   }
 }
