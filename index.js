@@ -1,15 +1,15 @@
 /**
- * `dsh-search-web-perplexity` — local DSH profile plugin: a Perplexity-backed
+ * `dsh-search-web-perplexity` — DSH profile plugin: a Perplexity-backed
  * search provider for the web capability seam (`ctx.web`) that uses Perplexity's
  * model-agnostic Search API (`POST /search`) instead of the Sonar
  * chat-completions route.
  *
- * Why the `/search` endpoint: it returns retrieved web pages directly —
- * title, url, extracted snippet, publication date — with no LLM answer
- * generation. That means no sonar model tokens are spent on the auxiliary
- * call, no generated prose is injected into the model's context, and
- * `max_results` is honored at the wire layer (not by post-hoc truncation).
- * The normalized result therefore carries `sources[]` only — no `content`.
+ * The Search API returns retrieved web pages directly — title, url, extracted
+ * snippet, publication date — with no LLM answer generation: no model tokens
+ * are spent on the auxiliary call, no generated prose reaches the model's
+ * context, and `max_results` is honored at the wire layer (not by post-hoc
+ * truncation). The normalized result therefore carries `sources[]` only — no
+ * `content`.
  *
  * Retrieved-length control: each source's retrieved content (`snippet`) is
  * capped at `maxRetrievedLength` bytes (default 4096) when placed into the
@@ -23,7 +23,7 @@
  * owns no model-facing tool. Wire format and the native `fetch` client are
  * provider-private and do not use `ctx.llm`.
  *
- * Local plugin for the DSH profile at ~/.dsh/profiles/web — not published.
+ * Install:  dsh plugin --profile <name> add <this repo's git URL> (see README).
  */
 
 import { createHash } from "node:crypto";
@@ -281,7 +281,7 @@ class PerplexitySearchProvider {
 		}
 		if (resolved !== undefined && resolved.length > 0) return resolved;
 		throw new WebError(
-			`Perplexity search has no API key for "${options.apiKeyEnv ?? PERPLEXITY_DEFAULT_API_KEY_ENV}"; store it through the credentials service (the web Models page writes it), export it in the launching environment, or set a literal "apiKey" in the dsh-search-web-perplexity config`,
+			`Perplexity search has no API key for "${options.apiKeyEnv ?? PERPLEXITY_DEFAULT_API_KEY_ENV}"; store it through the credentials service, export it in the launching environment, or set a literal "apiKey" in the dsh-search-web-perplexity config`,
 			"WEB_PROVIDER_CREDENTIAL_MISSING"
 		);
 	}

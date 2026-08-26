@@ -101,7 +101,7 @@ assert.equal(settingsScope.ns, "dsh-search-web-perplexity", "namespace is the pl
 assert.deepEqual(settingsScope.opts.base, { apiKeyEnv: "PERPLEXITY_API_KEY" }, "base is the entry config");
 // Hot reload: the provider reads current() per search, so a settings change
 // takes effect on the next search without re-applying the plugin.
-const hotDir = mkdtempSync(join(tmpdir(), "dsh-pplx-hot-"));
+const hotDir = mkdtempSync(join(tmpdir(), "dsh-search-web-perplexity-hot-"));
 fakeResultsOverride = [{ title: "Hot page", url: "https://hot.example/a", snippet: "z".repeat(300), date: null }];
 settingsScope.set({ apiKeyEnv: "PERPLEXITY_API_KEY", maxRetrievedLength: 60, retrievedTempDir: hotDir });
 const hotResult = await provider.search({ query: "hot reload", maxResults: 3 });
@@ -152,7 +152,7 @@ assert.deepEqual(fbody, { query: "q", max_results: 4, search_recency_filter: "da
 console.log("ok: optional filters forwarded on the wire");
 
 // ── retrieved-length cap: trim + tmp full-copy spill ───────────────────────
-const capDir = mkdtempSync(join(tmpdir(), "dsh-pplx-cap-test-"));
+const capDir = mkdtempSync(join(tmpdir(), "dsh-search-web-perplexity-cap-test-"));
 const longSnippet = "x".repeat(9000) + " END-MARKER";
 fakeResultsOverride = [
 	{ title: "Long page", url: "https://long.example/a", snippet: longSnippet, date: "2026-08-01" },
@@ -199,7 +199,7 @@ console.log("ok: truncateUtf8 snaps to character boundaries (CJK, mixed)");
 {
 	// A regular file as the dir's parent → mkdir fails fast with ENOTDIR.
 	const { writeFileSync } = await import("node:fs");
-	const blocker = join(tmpdir(), `dsh-pplx-blocker-${Date.now()}.file`);
+	const blocker = join(tmpdir(), `dsh-search-web-perplexity-blocker-${Date.now()}.file`);
 	writeFileSync(blocker, "blocker");
 	const opts = { maxRetrievedLength: 100, retrievedTempDir: join(blocker, "impossible-subdir") };
 	const out = await capRetrievedLength({ url: "https://x.example", snippet: "y".repeat(500) }, opts, "q");

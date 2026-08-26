@@ -61,5 +61,4 @@ uninstall.
 | `index.js` | host half: registers the search provider + settings section |
 | `client.js` | browser half: the settings card (served at `/plugins/dsh-search-web-perplexity/client.js`) |
 | `cordis.patch.yml` | the bundle layer (`dsh.bundle.patch`) |
-| `test.mjs` / `test-client.mjs` | host / browser test suites (`node test.mjs`) |
-| `dist/install.mjs` / `dist/uninstall.mjs` | legacy scripted installer for profiles not using `dsh plugin` — do not combine with the bundle route in the same profile (duplicate entry ids) |
+| `test.mjs` / `test-client.mjs` | host / browser test suites (`node test.mjs` / `node test-client.mjs`) |
