@@ -3,7 +3,8 @@
  * Run from this directory:  node test.mjs
  * Stubs globalThis.fetch and the cordis plugin context; asserts wire shape,
  * response mapping, retrieved-length capping (trim + tmp full-copy spill),
- * error paths, and abort handling.
+ * error paths, abort handling, and that the search-request diagnostic stays
+ * out of the durable session log.
  */
 import assert from "node:assert/strict";
 import { existsSync, mkdtempSync, readFileSync, readdirSync, rmSync } from "node:fs";
@@ -89,15 +90,41 @@ function fakeInject(deps, fn) {
 }
 const noopInject = () => {}; // settings service not mounted → composed-as-is
 
+// Session spy: captures any session-log append the provider attempts. A
+// plugin-owned event type (e.g. `web/perplexity-search-request`) can NEVER be
+// written to the durable log safely — Session.append silently drops the
+// `ignorable` envelope flag, and an unmarked unknown type makes every harness
+// build that lacks it in its catalog refuse to load the session's history.
+const appendedSessionEvents = [];
 const ctx = {
 	web: webStub, // injected property (inject: ['web'])
 	inject: fakeInject,
 	fiber: { state: 0 }, // not unloading/disposed (dsh-settings isUnloading guard)
 	get: (id) => {
 		if (id === "credentials") return { resolve: async (ref) => (ref === "PERPLEXITY_API_KEY" ? { value: "pplx-test-key" } : undefined) };
-		return undefined; // agents → recordRequest no-op
-	},
+		if (id === "agents") return {
+			currentInitiator: () => ({
+				session: {
+					append: (type, data, ...opts) => {
+						appendedSessionEvents.push({ type, data, opts });
+						return { type, data };
+					}
+				}
+			})
+		};
+		return undefined;
+	}
 };
+
+/** Poll a predicate until it holds or the deadline passes (async fire-and-forget diagnostics). */
+async function waitFor(predicate, deadlineMs = 2000) {
+	const start = Date.now();
+	while (Date.now() - start < deadlineMs) {
+		if (predicate()) return true;
+		await new Promise((resolve) => setTimeout(resolve, 10));
+	}
+	return predicate();
+}
 
 // ── apply() registers into ctx.web ─────────────────────────────────────────
 apply(ctx, { apiKeyEnv: "PERPLEXITY_API_KEY" });
@@ -142,6 +169,24 @@ assert.deepEqual(result.sources[1], { url: "https://perplexity.ai/results", titl
 assert.deepEqual(result.sources[2], { url: "https://example.org/x", title: "No snippet" });
 console.log("ok: wire shape (POST /search, query + max_results) and source mapping");
 
+// ── request diagnostic: local JSONL under retrievedTempDir, never the session log ─
+{
+	const diagDir = mkdtempSync(join(tmpdir(), "dsh-search-web-perplexity-diag-"));
+	settingsScope.set({ apiKeyEnv: "PERPLEXITY_API_KEY", retrievedTempDir: diagDir });
+	await provider.search({ query: "hong kong weather", maxResults: 5 });
+	const diagFile = join(diagDir, "requests.jsonl");
+	assert.ok(await waitFor(() => existsSync(diagFile)), "request diagnostic file appears under the retrieved-temp dir");
+	const records = readFileSync(diagFile, "utf8").trim().split("\n").map((line) => JSON.parse(line));
+	assert.equal(records.length, 1, "one record per search");
+	assert.equal(records[0].endpoint, "https://api.perplexity.ai/search");
+	assert.equal(records[0].body.query, "hong kong weather");
+	assert.equal(records[0].body.max_results, 5);
+	assert.equal(typeof records[0].time, "number", "record carries its own timestamp");
+	settingsScope.set({ apiKeyEnv: "PERPLEXITY_API_KEY" });
+	rmSync(diagDir, { recursive: true, force: true });
+}
+console.log("ok: search-request diagnostic written to local requests.jsonl (ephemeral, harness-independent)");
+
 // ── maxResults fallback + cap ──────────────────────────────────────────────
 await provider.search({ query: "q" });
 assert.equal(JSON.parse(captured.init.body).max_results, 10, "default 10 when request omits maxResults");
@@ -183,12 +228,13 @@ const trimmedPart = longSrc.snippet.split("\n\n[retrieved content")[0];
 assert.ok(Buffer.byteLength(trimmedPart, "utf8") <= 1000, "trimmed content within budget");
 const copyFile = join(capDir, retrievedCopyName({ url: "https://long.example/a" }, "long content"));
 assert.ok(existsSync(copyFile), "full copy file written");
+assert.ok(await waitFor(() => existsSync(join(capDir, "requests.jsonl"))), "request diagnostic recorded alongside the spill");
 const copyText = readFileSync(copyFile, "utf8");
 assert.ok(copyText.includes("# Long page"), "copy has title");
 assert.ok(copyText.includes("https://long.example/a"), "copy has url");
 assert.ok(copyText.includes("Published: 2026-08-01"), "copy has date");
 assert.ok(copyText.includes("END-MARKER"), "copy has the FULL snippet");
-assert.deepEqual(readdirSync(capDir).sort(), [retrievedCopyName({ url: "https://long.example/a" }, "long content")], "no file for under-limit row");
+assert.deepEqual(readdirSync(capDir).sort(), [retrievedCopyName({ url: "https://long.example/a" }, "long content"), "requests.jsonl"], "spill file for the over-limit row only (+ request diagnostic)");
 fakeResultsOverride = null;
 rmSync(capDir, { recursive: true, force: true });
 console.log("ok: over-limit row trimmed to budget, full copy spilled to tmp with pointer; under-limit row untouched");
@@ -262,5 +308,14 @@ await assert.rejects(
 	(err) => err.code === "WEB_ABORTED"
 );
 console.log("ok: pre-aborted signal surfaces WEB_ABORTED");
+
+// ── regression: the provider must never append session-log events ───────────
+// `Session.append` cannot carry the `ignorable` envelope flag (its options
+// parameter is the surface intent only), so any plugin-owned type appended
+// here persists UNMARKED and every harness build without it in its known-event
+// catalog then refuses to load the session's history. The diagnostic record
+// must stay out of the durable log entirely.
+assert.deepEqual(appendedSessionEvents, [], "provider appended no session-log events");
+console.log("ok: no plugin-owned event ever reaches the session log (root-cause regression guard)");
 
 console.log("\nALL TESTS PASSED");

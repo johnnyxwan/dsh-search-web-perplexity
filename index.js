@@ -27,7 +27,7 @@
  */
 
 import { createHash } from "node:crypto";
-import { mkdir, writeFile } from "node:fs/promises";
+import { appendFile, mkdir, writeFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 
@@ -126,6 +126,28 @@ function truncateUtf8(str, maxBytes) {
 /** Stable per-source file name: sha256(url + query), 16 hex chars. */
 function retrievedCopyName(source, query) {
 	return `${createHash("sha256").update(`${source.url}\n${query ?? ""}`).digest("hex").slice(0, 16)}.txt`;
+}
+
+/** File name of the plugin-local search-request diagnostic log. */
+const REQUEST_LOG_FILENAME = "requests.jsonl";
+
+/**
+ * Append one search-request diagnostic record to the plugin-local JSONL file
+ * under `dir` (the same ephemeral location as the full-copy spills).
+ * Fire-and-forget: the record is purely informational — losing it cannot
+ * affect anything the harness reconstructs — so a tmp-write failure (missing
+ * dir, disk pressure, permissions) is swallowed rather than failing the search.
+ *
+ * @param request - the record ({ endpoint, body }).
+ * @param dir - the plugin's retrieved-temp directory (created lazily).
+ */
+function recordRequestLocally(request, dir) {
+	const line = JSON.stringify({ ...request, time: Date.now() }) + "\n";
+	mkdir(dir, { recursive: true })
+		.then(() => appendFile(join(dir, REQUEST_LOG_FILENAME), line, "utf8"))
+		.catch(() => {
+			// Diagnostic-only: never fail a search over a tmp write.
+		});
 }
 
 /** Render the full copy of one source row (title, url, date, full content). */
@@ -297,6 +319,7 @@ class PerplexitySearchProvider {
 function resolveOptions(ctx, config) {
 	const apiKeyEnv = credentialRef(config.apiKeyEnv ?? PERPLEXITY_DEFAULT_API_KEY_ENV);
 	const literalApiKey = config.apiKey !== undefined && config.apiKey.length > 0 ? config.apiKey : undefined;
+	const retrievedTempDir = config.retrievedTempDir ?? join(tmpdir(), PERPLEXITY_DEFAULT_TEMP_DIRNAME);
 	return {
 		...literalApiKey === undefined ? {} : { apiKey: literalApiKey },
 		resolveApiKey: async () => {
@@ -309,20 +332,29 @@ function resolveOptions(ctx, config) {
 		baseURL: config.baseURL ?? launchEnvironmentOf(ctx).get("PERPLEXITY_SEARCH_BASE_URL")?.value ?? PERPLEXITY_DEFAULT_BASE_URL,
 		maxResults: config.maxResults ?? PERPLEXITY_DEFAULT_MAX_RESULTS,
 		maxRetrievedLength: config.maxRetrievedLength ?? PERPLEXITY_DEFAULT_MAX_RETRIEVED_LENGTH,
-		retrievedTempDir: config.retrievedTempDir ?? join(tmpdir(), PERPLEXITY_DEFAULT_TEMP_DIRNAME),
+		retrievedTempDir,
 		...config.searchRecency !== undefined ? { searchRecency: config.searchRecency } : {},
 		...config.searchDomainFilter !== undefined ? { searchDomainFilter: config.searchDomainFilter } : {},
 		...config.searchLanguageFilter !== undefined ? { searchLanguageFilter: config.searchLanguageFilter } : {},
 		...config.country !== undefined ? { country: config.country } : {},
 		...config.searchContextSize !== undefined ? { searchContextSize: config.searchContextSize } : {},
 		recordRequest: (request) => {
+			// Diagnostic only — deliberately NOT a session-log event.
+			//
 			// `web/perplexity-search-request` is a plugin-owned event type,
-			// outside the harness's known-event catalog by construction. The
-			// persistence read path refuses unknown types unless the writer
-			// marks them ignorable, so this diagnostic record MUST carry the
-			// envelope flag — otherwise any build without this plugin in its
-			// catalog refuses to load the session's history at all.
-			ctx.get("agents")?.currentInitiator()?.session.append("web/perplexity-search-request", request, { ignorable: true });
+			// outside the harness's build-static known-event catalog by
+			// construction, and the persistence read path refuses unknown
+			// types unless the event carries the `ignorable` envelope flag.
+			// `Session.append` CANNOT carry that flag: its options parameter
+			// is the surface intent (surfaceOp / sourceEventSeqs only), and
+			// an `ignorable` key passed there is silently dropped, so the
+			// event persists UNMARKED. Any harness build that lacks this type
+			// in its catalog then refuses to load the session's history at
+			// all — a diagnostic record must never poison the durable log.
+			// The record therefore goes to a local, ephemeral JSONL file
+			// under the retrieved-temp directory instead: losing it cannot
+			// affect session reconstruction, and no harness can choke on it.
+			recordRequestLocally(request, retrievedTempDir);
 		}
 	};
 }
