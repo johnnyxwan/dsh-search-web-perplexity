@@ -35,13 +35,13 @@ import z from "@deepseek-ai/schemastery";
 import { credentialRef } from "@deepseek-ai/dsh-credentials";
 import { launchEnvironmentOf } from "@deepseek-ai/dsh-launch-environment";
 import { WebError } from "@deepseek-ai/dsh-web";
-import { installSettingsSection, settingsNamespace } from "@deepseek-ai/dsh-settings";
+// Settings section is registered via ctx.settings.installSection (dsh >= 0.1.2-rc.1); no value import from @deepseek-ai/dsh-settings.
 
 /** Stable id this provider registers under. */
 const PERPLEXITY_PROVIDER_ID = "dsh-search-web-perplexity";
 
 /** Settings namespace this plugin owns; the join key for its settings card. */
-const PERPLEXITY_SETTINGS_NAMESPACE = settingsNamespace("dsh-search-web-perplexity");
+const PERPLEXITY_SETTINGS_NAMESPACE = "dsh-search-web-perplexity";
 
 /** Default Perplexity endpoint; `/search` is appended (the Search API). */
 const PERPLEXITY_DEFAULT_BASE_URL = "https://api.perplexity.ai";
@@ -369,13 +369,15 @@ export const Config = z.object({
  */
 export function apply(ctx, config) {
 	let current = () => config;
-	installSettingsSection(ctx, PERPLEXITY_SETTINGS_NAMESPACE, Config, config, {
-		setSource: (source) => {
-			current = source;
-		},
-		onChange: () => {
-			// The provider reads `current()` per search; nothing else to rebuild.
-		}
+	ctx.inject(["settings"], (settingsCtx) => {
+		settingsCtx.settings.installSection(ctx, PERPLEXITY_SETTINGS_NAMESPACE, Config, config, {
+			setSource: (source) => {
+				current = source;
+			},
+			onChange: () => {
+				// The provider reads `current()` per search; nothing else to rebuild.
+			}
+		});
 	});
 	ctx.web.registerSearchProvider(new PerplexitySearchProvider(() => resolveOptions(ctx, current())));
 }
